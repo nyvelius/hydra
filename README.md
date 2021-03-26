@@ -132,7 +132,7 @@ that your company deserves a spot here, reach out to
         </tr>
         <tr>
             <td>Contributor</td>
-            <td>Kyma Project</a>
+            <td>Kyma Project</td>
             <td align="center"><img height="32px" src="https://raw.githubusercontent.com/ory/meta/master/static/adopters/kyma.svg" alt="Kyma Project"></td>
             <td><a href="https://kyma-project.io">kyma-project.io</a></td>
         </tr>
@@ -183,6 +183,12 @@ that your company deserves a spot here, reach out to
             <td>DataDetect</td>
             <td align="center"><img height="32px" src="https://raw.githubusercontent.com/ory/meta/master/static/adopters/datadetect.svg" alt="Datadetect"></td>
             <td><a href="https://unifiedglobalarchiving.com/data-detect/">unifiedglobalarchiving.com/data-detect/</a></td>
+        </tr>        
+        <tr>
+            <td>Adopter *</td>
+            <td>Sainsbury's</td>
+            <td align="center"><img height="32px" src="https://raw.githubusercontent.com/ory/meta/master/static/adopters/sainsburys.svg" alt="Sainsbury's"></td>
+            <td><a href="https://www.sainsburys.co.uk/">sainsburys.co.uk</a></td>
         </tr>
         <tr>
             <td>Sponsor</td>
@@ -196,12 +202,12 @@ that your company deserves a spot here, reach out to
             <td align="center"><img height="32px" src="https://raw.githubusercontent.com/ory/meta/master/static/adopters/spiribo.svg" alt="Spiri.bo"></td>
             <td><a href="https://spiri.bo/">spiri.bo</a></td>
         </tr>
-    </tdbody>
+    </tbody>
 </table>
 
 We also want to thank all individual contributors
 
-<img src="https://opencollective.com/ory/contributors.svg?width=890&button=false" /></a>
+<a href="https://opencollective.com/ory" target="_blank"><img src="https://opencollective.com/ory/contributors.svg?width=890&button=false" /></a>
 
 as well as all of our backers
 
@@ -435,18 +441,48 @@ There are three types of tests you can run:
 - Regular tests (do require PostgreSQL, MySQL, CockroachDB)
 - End to end tests (do require databases and will use a test browser)
 
+All of the above tests can be run using the makefile. See the commands below.
+
+**Makefile commands**
+
+```shell
+# quick tests
+make quicktest
+
+# regular tests
+make test
+test-resetdb
+
+# end-to-end tests
+make e2e
+```
+
 ##### Short Tests
+
+It is recommended to use the make file to run your tests using `make quicktest`
+, however, you can still use the `go test` command.
+
+**Please note**:
+
+All tests run against a sqlite in-memory database,
+thus it is required to use the `-tags sqlite` build tag.
 
 Short tests run fairly quickly. You can either test all of the code at once:
 
 ```shell script
-go test -short ./...
+go test -v -failfast -short -tags sqlite ./...
 ```
 
 or test just a specific module:
 
 ```shell script
-cd client; go test -short .
+go test -v -failfast -short -tags sqlite ./client
+```
+
+or a specific test:
+
+```shell script
+go test -v -failfast -short -tags sqlite -run ^TestName$ ./...
 ```
 
 ##### Regular Tests

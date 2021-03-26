@@ -2,9 +2,13 @@ package driver
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/pkg/errors"
 
 	"github.com/ory/hydra/x/oauth2cors"
 
@@ -91,10 +95,10 @@ func (m *RegistryBase) OAuth2AwareMiddleware() func(h http.Handler) http.Handler
 }
 
 func (m *RegistryBase) RegisterRoutes(admin *x.RouterAdmin, public *x.RouterPublic) {
-	m.HealthHandler().SetRoutes(admin.Router, true)
+	m.HealthHandler().SetHealthRoutes(admin.Router, true)
+	m.HealthHandler().SetVersionRoutes(admin.Router)
 
-	public.GET(healthx.AliveCheckPath, m.HealthHandler().Alive)
-	public.GET(healthx.ReadyCheckPath, m.HealthHandler().Ready(false))
+	m.HealthHandler().SetHealthRoutes(public.Router, false)
 
 	admin.Handler("GET", prometheus.MetricsPrometheusPath, promhttp.Handler())
 
@@ -151,7 +155,7 @@ func (m *RegistryBase) AuditLogger() *logrusx.Logger {
 
 func (m *RegistryBase) ClientHasher() fosite.Hasher {
 	if m.fh == nil {
-		if m.Tracer().IsLoaded() {
+		if m.Tracer(context.TODO()).IsLoaded() {
 			m.fh = &tracing.TracedBCrypt{WorkFactor: m.C.BCryptCost()}
 		} else {
 			m.fh = x.NewBCrypt(m.C)
@@ -180,10 +184,27 @@ func (m *RegistryBase) KeyHandler() *jwk.Handler {
 	}
 	return m.kh
 }
+
 func (m *RegistryBase) HealthHandler() *healthx.Handler {
 	if m.hh == nil {
 		m.hh = healthx.NewHandler(m.Writer(), m.buildVersion, healthx.ReadyCheckers{
-			"database": m.r.Ping,
+			"database": func(_ *http.Request) error {
+				return m.r.Ping()
+			},
+			"migrations": func(r *http.Request) error {
+				status, err := m.r.Persister().MigrationStatus(r.Context())
+				if err != nil {
+					return err
+				}
+
+				if status.HasPending() {
+					err := errors.Errorf("migrations have not yet been fully applied: %+v", status)
+					m.Logger().WithField("status", fmt.Sprintf("%+v", status)).WithError(err).Warn("Instance is not yet ready because migrations have not yet been fully applied.")
+					return err
+				}
+
+				return nil
+			},
 		})
 	}
 
@@ -316,6 +337,12 @@ func (m *RegistryBase) ScopeStrategy() fosite.ScopeStrategy {
 
 func (m *RegistryBase) newKeyStrategy(key string) (s jwk.JWTStrategy) {
 	if err := jwk.EnsureAsymmetricKeypairExists(context.Background(), m.r, new(jwk.RS256Generator), key); err != nil {
+		var netError net.Error
+		if errors.As(err, &netError) {
+			m.Logger().WithError(err).Fatalf(`Could not ensure that signing keys for "%s" exists. A network error occurred, see error for specific details.`, key)
+			return
+		}
+
 		m.Logger().WithError(err).Fatalf(`Could not ensure that signing keys for "%s" exists. If you are running against a persistent SQL database this is most likely because your "secrets.system" ("SECRETS_SYSTEM" environment variable) is not set or changed. When running with an SQL database backend you need to make sure that the secret is set and stays the same, unless when doing key rotation. This may also happen when you forget to run "hydra migrate sql"..`, key)
 	}
 
@@ -394,7 +421,7 @@ func (m *RegistryBase) SubjectIdentifierAlgorithm() map[string]consent.SubjectId
 	return m.sia
 }
 
-func (m *RegistryBase) Tracer() *tracing.Tracer {
+func (m *RegistryBase) Tracer(ctx context.Context) *tracing.Tracer {
 	if m.trc == nil {
 		t, err := tracing.New(m.l, m.C.Tracing())
 		if err != nil {
